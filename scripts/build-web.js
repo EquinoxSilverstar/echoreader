@@ -2,7 +2,7 @@ const { spawnSync } = require('node:child_process');
 const { mkdirSync, writeFileSync } = require('node:fs');
 const path = require('node:path');
 
-const env = { ...process.env };
+const env = { ...process.env, EXPO_NO_DOTENV: '1' };
 delete env.EXPO_PUBLIC_ELEVENLABS_KEY;
 delete env.EXPO_PUBLIC_GOOGLE_TTS_KEY;
 
