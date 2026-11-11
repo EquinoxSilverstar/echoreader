@@ -19,7 +19,15 @@
       "predictiveBackGestureEnabled": false
     },
     "web": {
+      "bundler": "metro",
+      "output": "single",
       "favicon": "./assets/favicon.png"
-    }
+    },
+    "experiments": {
+      "baseUrl": "/Echo-Reader-DEMO"
+    },
+    "plugins": [
+      "expo-audio"
+    ]
   }
 }
