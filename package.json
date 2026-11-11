@@ -25,7 +25,7 @@
     "typescript": "~6.0.3"
   },
   "scripts": {
-    "start": "node ./node_modules/expo/bin/cli start",
+    "start": "node --env-file=Api.env ./node_modules/expo/bin/cli start",
     "android": "node --env-file=Api.env ./node_modules/expo/bin/cli start --android",
     "ios": "node --env-file=Api.env ./node_modules/expo/bin/cli start --ios",
     "web": "node ./node_modules/expo/bin/cli start --web",
