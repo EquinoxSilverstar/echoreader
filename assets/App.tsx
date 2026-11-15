@@ -434,9 +434,8 @@ function Reader({ signedIn, onExit, isSigningOut, accountNotice }: ReaderProps) 
     setViewMode('player');
   };
 
-  const onBorrow = (book: BookResult, text: string) => {
+  const onImportBook = (book: BookResult, text: string) => {
     setShelf((s) => (s.some((i) => i.book.id === book.id) ? s : [{ book, text }, ...s]));
-    openText(text, book.title, book.author);
   };
 
   const onOpenShelf = (item: ShelfItem) => openText(item.text, item.book.title, item.book.author);
@@ -528,7 +527,7 @@ function Reader({ signedIn, onExit, isSigningOut, accountNotice }: ReaderProps) 
 
       {/* BODY */}
       {screen === 'library' ? (
-        <LibraryScreen shelf={shelf} onBorrow={onBorrow} onOpen={onOpenShelf} />
+        <LibraryScreen shelf={shelf} onImport={onImportBook} onOpen={onOpenShelf} />
       ) : viewMode === 'player' ? (
         <View style={styles.playerContainer}>
           <View style={styles.heroWrap}>

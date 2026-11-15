@@ -8,7 +8,7 @@ In the repository settings, open **Settings → Pages** and set **Build and depl
 
 To build locally, use Node.js 24 and run `npm ci` followed by `npm run build:web`. The static site is exported to `dist` with the GitHub Pages base path `/echoreader`, configured in `app.json`.
 
-The web library uses Open Library; Gutenberg is only available in native builds. Book text downloads depend on the source allowing browser requests.
+The library is for your own books. Import EPUB, TXT, or Markdown (`.md`) files from your device, then open a book from your shelf to listen or read it. Imported books and reading position remain in memory for the current session.
 
 Cloud voice API keys are not included in the web build. To use a cloud voice, enter its key in the narrator screen for the current browser session; the app does not save it. The browser sends the key directly to the chosen voice provider. For safer public use, prefer device voices or put provider calls behind a server.
 
@@ -31,4 +31,4 @@ Run `npm start`, `npm run android`, or `npm run ios` to start native development
 
 For local development, put the same four values in `.env.local`. For a local production export, set them in your shell before running `npm run build:web`, which skips loading dotenv files. These are public client configuration values. Keep service-account credentials and voice provider keys out of the client build.
 
-Guest mode works without Firebase configuration. Accounts handle sign-in and password recovery. The library and reading position remain in memory for the current session.
+Guest mode works without Firebase configuration. Accounts handle sign-in and password recovery.
