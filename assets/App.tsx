@@ -16,6 +16,7 @@ import {
 } from './src/Tts';
 import { BookResult } from './src/Books';
 import LibraryScreen, { ShelfItem } from './Libraryscreen';
+import AuthScreen from './AuthScreen';
 
 const { width } = Dimensions.get('window');
 
@@ -38,6 +39,7 @@ export default function App() {
 
   // --- ui
   const [screen, setScreen] = useState<'listen' | 'library'>('listen');
+  const [showAuth, setShowAuth] = useState(true);
   const [viewMode, setViewMode] = useState<'player' | 'reader'>('player');
   const [isVoiceModalOpen, setIsVoiceModalOpen] = useState(false);
   const [voiceTab, setVoiceTab] = useState<'cloud' | 'device'>('cloud');
@@ -416,6 +418,10 @@ export default function App() {
   };
 
   const playBtnIcon = isBuffering ? null : isPlaying ? 'pause' : 'play';
+
+  if (showAuth) {
+    return <AuthScreen onContinueAsGuest={() => setShowAuth(false)} />;
+  }
 
   return (
     <SafeAreaView style={styles.safeArea}>
