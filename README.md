@@ -17,7 +17,7 @@ Run `npm start`, `npm run android`, or `npm run ios` to start native development
 ## Real accounts
 
 1. Create a project in the [Firebase console](https://console.firebase.google.com/) and register a **Web** app in it. Copy the values from its Web app configuration.
-2. In **Authentication → Sign-in method**, enable **Email/Password**. Set the minimum password length to 8 under **Authentication → Settings → Password policy** to match the signup form. In **Settings → Authorized domains**, add `equinoxsilverstar.github.io`. Add `localhost` there if you use it for local testing and it is missing.
+2. In **Authentication → Sign-in method**, enable **Email/Password**. Set the minimum password length to 8 under **Authentication → Settings → Password policy** to match the signup form. EchoReader uses Firebase's hosted password reset page. Add an authorized domain if you later configure an OAuth provider or set a custom return URL in account emails.
 3. In GitHub, open **Settings → Secrets and variables → Actions → Variables** and create these four repository variables.
 
    | Repository variable | Firebase web config field |
