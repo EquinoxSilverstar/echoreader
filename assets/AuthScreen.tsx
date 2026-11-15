@@ -1,24 +1,60 @@
-import React, { useState } from 'react';
+import React, { useRef, useState } from 'react';
 import {
   Image, KeyboardAvoidingView, Platform, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import {
+  createUserWithEmailAndPassword, sendPasswordResetEmail, signInWithEmailAndPassword, updateProfile,
+} from 'firebase/auth';
 import { C } from './src/Theme';
 import { Icon } from './src/Icon';
+import { auth, authErrorCode } from './src/FirebaseAuth';
 
 type Props = {
   onContinueAsGuest: () => void;
+  onProfileWarning: (userId: string) => void;
 };
 
 type AuthMode = 'signIn' | 'createAccount';
 
-export default function AuthScreen({ onContinueAsGuest }: Props) {
+const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const unavailableMessage = 'Accounts are currently unavailable. You can continue as a guest.';
+const resetMessage = 'If an account exists for that email, check your inbox for a password reset link.';
+
+function authErrorMessage(error: unknown, fallback: string) {
+  switch (authErrorCode(error)) {
+    case 'auth/invalid-credential':
+    case 'auth/wrong-password':
+    case 'auth/user-not-found':
+    case 'auth/user-disabled':
+      return 'Could not sign in with that email and password.';
+    case 'auth/email-already-in-use':
+      return 'Could not create an account. Try signing in or resetting your password.';
+    case 'auth/weak-password':
+    case 'auth/password-does-not-meet-requirements':
+      return 'Choose a stronger password and try again.';
+    case 'auth/network-request-failed':
+      return 'Check your internet connection and try again.';
+    case 'auth/too-many-requests':
+      return 'Too many attempts. Wait a moment and try again.';
+    case 'auth/operation-not-allowed':
+    case 'auth/invalid-api-key':
+    case 'auth/configuration-not-found':
+      return unavailableMessage;
+    default:
+      return fallback;
+  }
+}
+
+export default function AuthScreen({ onContinueAsGuest, onProfileWarning }: Props) {
   const [mode, setMode] = useState<AuthMode>('signIn');
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [passwordVisible, setPasswordVisible] = useState(false);
   const [message, setMessage] = useState('');
+  const [busy, setBusy] = useState(false);
+  const requestInProgress = useRef(false);
 
   const isCreatingAccount = mode === 'createAccount';
 
@@ -27,26 +63,76 @@ export default function AuthScreen({ onContinueAsGuest }: Props) {
     setMessage('');
   };
 
-  const submit = () => {
+  const submit = async () => {
+    if (requestInProgress.current) return;
+    if (!auth) {
+      setMessage(unavailableMessage);
+      return;
+    }
     const normalizedEmail = email.trim();
     if (isCreatingAccount && !name.trim()) {
       setMessage('Enter your name to create an account.');
       return;
     }
-    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalizedEmail)) {
+    if (!emailPattern.test(normalizedEmail)) {
       setMessage('Enter a valid email address.');
       return;
     }
-    if (password.length < 8) {
+    if (!isCreatingAccount && !password) {
+      setMessage('Enter your password.');
+      return;
+    }
+    if (isCreatingAccount && password.length < 8) {
       setMessage('Your password must be at least 8 characters.');
       return;
     }
 
-    setMessage('Authentication is not connected yet. Continue as a guest to explore EchoReader.');
+    requestInProgress.current = true;
+    setBusy(true);
+    setMessage('');
+    try {
+      if (isCreatingAccount) {
+        const { user } = await createUserWithEmailAndPassword(auth, normalizedEmail, password);
+        await updateProfile(user, { displayName: name.trim() }).catch(() => onProfileWarning(user.uid));
+      } else {
+        await signInWithEmailAndPassword(auth, normalizedEmail, password);
+      }
+    } catch (error) {
+      setMessage(authErrorMessage(error, isCreatingAccount
+        ? 'Could not create your account. Try again.'
+        : 'Could not sign in. Try again.'));
+    } finally {
+      requestInProgress.current = false;
+      setBusy(false);
+    }
   };
 
-  const requestPasswordReset = () => {
-    setMessage('Password reset will be available when authentication is connected.');
+  const requestPasswordReset = async () => {
+    if (requestInProgress.current) return;
+    if (!auth) {
+      setMessage(unavailableMessage);
+      return;
+    }
+    const normalizedEmail = email.trim();
+    if (!emailPattern.test(normalizedEmail)) {
+      setMessage('Enter your email address to reset your password.');
+      return;
+    }
+
+    requestInProgress.current = true;
+    setBusy(true);
+    setMessage('');
+    try {
+      await sendPasswordResetEmail(auth, normalizedEmail);
+      setMessage(resetMessage);
+    } catch (error) {
+      setMessage(authErrorCode(error) === 'auth/user-not-found'
+        ? resetMessage
+        : authErrorMessage(error, 'Could not send a reset link. Try again.'));
+    } finally {
+      requestInProgress.current = false;
+      setBusy(false);
+    }
   };
 
   return (
@@ -69,6 +155,7 @@ export default function AuthScreen({ onContinueAsGuest }: Props) {
               <TouchableOpacity
                 accessibilityRole="button"
                 accessibilityState={{ selected: !isCreatingAccount }}
+                disabled={busy}
                 style={[styles.modeTab, !isCreatingAccount && styles.modeTabActive]}
                 onPress={() => changeMode('signIn')}
               >
@@ -77,6 +164,7 @@ export default function AuthScreen({ onContinueAsGuest }: Props) {
               <TouchableOpacity
                 accessibilityRole="button"
                 accessibilityState={{ selected: isCreatingAccount }}
+                disabled={busy}
                 style={[styles.modeTab, isCreatingAccount && styles.modeTabActive]}
                 onPress={() => changeMode('createAccount')}
               >
@@ -86,7 +174,7 @@ export default function AuthScreen({ onContinueAsGuest }: Props) {
 
             <Text style={styles.heading}>{isCreatingAccount ? 'Create your account' : 'Welcome back'}</Text>
             <Text style={styles.description}>
-              {isCreatingAccount ? 'Save your place and keep your library close.' : 'Sign in to pick up where you left off.'}
+              {isCreatingAccount ? 'Create an EchoReader account with your email.' : 'Sign in with your EchoReader account.'}
             </Text>
 
             {isCreatingAccount && (
@@ -101,6 +189,7 @@ export default function AuthScreen({ onContinueAsGuest }: Props) {
                     placeholderTextColor={C.textMuted}
                     value={name}
                     onChangeText={setName}
+                    editable={!busy}
                     autoCapitalize="words"
                     returnKeyType="next"
                   />
@@ -119,6 +208,7 @@ export default function AuthScreen({ onContinueAsGuest }: Props) {
                   placeholderTextColor={C.textMuted}
                   value={email}
                   onChangeText={setEmail}
+                  editable={!busy}
                   autoCapitalize="none"
                   autoCorrect={false}
                   keyboardType="email-address"
@@ -132,7 +222,7 @@ export default function AuthScreen({ onContinueAsGuest }: Props) {
               <View style={styles.labelRow}>
                 <Text style={styles.label}>Password</Text>
                 {!isCreatingAccount && (
-                  <TouchableOpacity onPress={requestPasswordReset} accessibilityRole="button">
+                  <TouchableOpacity onPress={requestPasswordReset} accessibilityRole="button" disabled={busy}>
                     <Text style={styles.link}>Forgot password?</Text>
                   </TouchableOpacity>
                 )}
@@ -142,10 +232,11 @@ export default function AuthScreen({ onContinueAsGuest }: Props) {
                 <TextInput
                   accessibilityLabel="Password"
                   style={styles.input}
-                  placeholder="At least 8 characters"
+                  placeholder={isCreatingAccount ? 'At least 8 characters' : 'Your password'}
                   placeholderTextColor={C.textMuted}
                   value={password}
                   onChangeText={setPassword}
+                  editable={!busy}
                   autoCapitalize="none"
                   autoCorrect={false}
                   secureTextEntry={!passwordVisible}
@@ -164,15 +255,24 @@ export default function AuthScreen({ onContinueAsGuest }: Props) {
               </View>
             </View>
 
-            {!!message && (
+            {(message || !auth) && (
               <View style={styles.messageBox} accessibilityLiveRegion="polite">
                 <Icon name="information-circle-outline" size={18} color={C.cyan} />
-                <Text style={styles.messageText}>{message}</Text>
+                <Text style={styles.messageText}>{message || unavailableMessage}</Text>
               </View>
             )}
 
-            <TouchableOpacity style={styles.submitButton} onPress={submit} activeOpacity={0.85}>
-              <Text style={styles.submitText}>{isCreatingAccount ? 'Create account' : 'Sign in'}</Text>
+            <TouchableOpacity
+              accessibilityRole="button"
+              accessibilityState={{ busy }}
+              style={[styles.submitButton, busy && { opacity: 0.6 }]}
+              onPress={submit}
+              disabled={busy}
+              activeOpacity={0.85}
+            >
+              <Text style={styles.submitText}>
+                {busy ? 'Please wait…' : isCreatingAccount ? 'Create account' : 'Sign in'}
+              </Text>
               <Icon name="arrow-forward" size={18} color="#fff" />
             </TouchableOpacity>
 
@@ -182,7 +282,7 @@ export default function AuthScreen({ onContinueAsGuest }: Props) {
               <View style={styles.divider} />
             </View>
 
-            <TouchableOpacity style={styles.guestButton} onPress={onContinueAsGuest} activeOpacity={0.8}>
+            <TouchableOpacity style={styles.guestButton} onPress={onContinueAsGuest} activeOpacity={0.8} disabled={busy}>
               <Icon name="headset-outline" size={18} color={C.cyan} />
               <Text style={styles.guestText}>Continue as a guest</Text>
             </TouchableOpacity>

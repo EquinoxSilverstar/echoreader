@@ -6,6 +6,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import * as Speech from 'expo-speech';
+import { onAuthStateChanged, signOut, type User } from 'firebase/auth';
 
 import { C } from './src/Theme';
 import { Icon } from './src/Icon';
@@ -17,6 +18,7 @@ import {
 import { BookResult } from './src/Books';
 import LibraryScreen, { ShelfItem } from './Libraryscreen';
 import AuthScreen from './AuthScreen';
+import { auth } from './src/FirebaseAuth';
 
 const { width } = Dimensions.get('window');
 
@@ -25,6 +27,68 @@ const WAVE_COLORS = [C.magenta, '#C34BFB', C.purple, '#6F78FA', C.blue, '#2BB6F2
 const SPEEDS = [0.8, 1.0, 1.25, 1.5, 2.0];
 
 export default function App() {
+  const [user, setUser] = useState<User | null | undefined>(auth ? undefined : null);
+  const [guest, setGuest] = useState(false);
+  const [profileWarningFor, setProfileWarningFor] = useState<string>();
+  const [signOutError, setSignOutError] = useState('');
+  const [isSigningOut, setIsSigningOut] = useState(false);
+
+  useEffect(() => {
+    if (auth) return onAuthStateChanged(auth, setUser);
+  }, []);
+
+  const leaveReader = async () => {
+    if (!user || !auth) {
+      setGuest(false);
+      return;
+    }
+
+    setIsSigningOut(true);
+    setSignOutError('');
+    try {
+      await signOut(auth);
+      setGuest(false);
+      setProfileWarningFor(undefined);
+    } catch {
+      setSignOutError('Could not sign out. Try again.');
+    } finally {
+      setIsSigningOut(false);
+    }
+  };
+
+  if (user === undefined) {
+    return (
+      <SafeAreaView style={[styles.safeArea, styles.authLoading]}>
+        <ActivityIndicator color={C.cyan} accessibilityLabel="Checking your account session" />
+      </SafeAreaView>
+    );
+  }
+
+  if (!guest && !user) {
+    return <AuthScreen onContinueAsGuest={() => setGuest(true)} onProfileWarning={setProfileWarningFor} />;
+  }
+
+  return (
+    <Reader
+      key={user ? `account:${user.uid}` : 'guest'}
+      signedIn={!!user}
+      onExit={leaveReader}
+      isSigningOut={isSigningOut}
+      accountNotice={signOutError || (user && profileWarningFor === user.uid
+        ? 'Account created. Your display name could not be saved.'
+        : '')}
+    />
+  );
+}
+
+type ReaderProps = {
+  signedIn: boolean;
+  onExit: () => void;
+  isSigningOut: boolean;
+  accountNotice: string;
+};
+
+function Reader({ signedIn, onExit, isSigningOut, accountNotice }: ReaderProps) {
   const defaultBook =
     `Chapter 1: The Modern Audiobook\n\n` +
     `Welcome to EchoReader. Open the Library tab to borrow a classic book, then press play. ` +
@@ -39,7 +103,6 @@ export default function App() {
 
   // --- ui
   const [screen, setScreen] = useState<'listen' | 'library'>('listen');
-  const [showAuth, setShowAuth] = useState(true);
   const [viewMode, setViewMode] = useState<'player' | 'reader'>('player');
   const [isVoiceModalOpen, setIsVoiceModalOpen] = useState(false);
   const [voiceTab, setVoiceTab] = useState<'cloud' | 'device'>('cloud');
@@ -419,10 +482,6 @@ export default function App() {
 
   const playBtnIcon = isBuffering ? null : isPlaying ? 'pause' : 'play';
 
-  if (showAuth) {
-    return <AuthScreen onContinueAsGuest={() => setShowAuth(false)} />;
-  }
-
   return (
     <SafeAreaView style={styles.safeArea}>
       <StatusBar barStyle="light-content" />
@@ -451,10 +510,21 @@ export default function App() {
               {viewMode === 'player' ? 'Read' : 'Listen'}
             </Text>
           </TouchableOpacity>
-        ) : (
-          <View style={{ width: 38 }} />
-        )}
+        ) : null}
+        <TouchableOpacity
+          style={styles.roundBtn}
+          onPress={onExit}
+          accessibilityRole="button"
+          accessibilityLabel={signedIn ? 'Sign out' : 'Return to sign in'}
+          accessibilityState={{ busy: isSigningOut }}
+          disabled={isSigningOut}
+        >
+          <Icon name={signedIn ? 'log-out-outline' : 'person-outline'} size={19} color={C.cyan} />
+        </TouchableOpacity>
       </View>
+      {!!accountNotice && (
+        <Text style={styles.accountNotice} accessibilityLiveRegion="polite">{accountNotice}</Text>
+      )}
 
       {/* BODY */}
       {screen === 'library' ? (
@@ -723,16 +793,18 @@ export default function App() {
 
 const styles = StyleSheet.create({
   safeArea: { flex: 1, backgroundColor: C.bg },
+  authLoading: { alignItems: 'center', justifyContent: 'center' },
+  accountNotice: { color: C.text, backgroundColor: C.surface, padding: 12 },
 
   topNav: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
-    paddingHorizontal: 16, paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: C.border,
+    paddingHorizontal: 16, paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: C.border, gap: 8,
   },
   roundBtn: {
     width: 38, height: 38, borderRadius: 19, backgroundColor: C.surface,
     borderWidth: 1, borderColor: C.border, alignItems: 'center', justifyContent: 'center',
   },
-  headerInfo: { flexDirection: 'row', alignItems: 'center', maxWidth: width * 0.5 },
+  headerInfo: { flex: 1, flexDirection: 'row', alignItems: 'center', minWidth: 0 },
   headerLogo: { width: 34, height: 34, borderRadius: 17 },
   headerBrand: { color: C.text, fontSize: 15, fontWeight: '800', letterSpacing: 0.3 },
   headerBookTitle: { color: C.textMuted, fontSize: 11, fontWeight: '600', marginTop: 1 },
