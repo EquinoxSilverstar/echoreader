@@ -2,11 +2,11 @@
 
 ## Web demo
 
-The app is built as a static website in `dist`; GitHub Pages must publish that build, not the repository's source or README. The included GitHub Actions workflow builds and deploys it whenever changes are pushed to `main`, or when manually started from the Actions tab.
+The **Deploy web demo** workflow builds the app into `dist` and publishes it to GitHub Pages on pushes to `master`. You can also start it manually from the **Actions** tab.
 
-In the repository settings, open **Settings → Pages** and set **Build and deployment → Source** to **GitHub Actions**. After pushing to `main`, check the **Actions** tab for the “Deploy web demo” workflow. Once it succeeds, the app is available at `https://YOUR-USERNAME.github.io/Echo-Reader-DEMO/`.
+In the repository settings, open **Settings → Pages** and set **Build and deployment → Source** to **GitHub Actions**. When the workflow succeeds, open [the EchoReader web demo](https://equinoxsilverstar.github.io/echoreader/).
 
-To build locally, run `npm ci` followed by `npm run build:web`. The static site is exported to `dist` with the GitHub Pages base path `/Echo-Reader-DEMO` and a `.nojekyll` file. The base path is configured in `app.json` and must match the repository name, including capitalization.
+To build locally, use Node.js 24 and run `npm ci` followed by `npm run build:web`. The static site is exported to `dist` with the GitHub Pages base path `/echoreader`, configured in `app.json`.
 
 The web library uses Open Library; Gutenberg is only available in native builds. Book text downloads depend on the source allowing browser requests.
 
