@@ -10,7 +10,7 @@ To build locally, use Node.js 24 and run `npm ci` followed by `npm run build:web
 
 The library is for your own books. Import EPUB, TXT, or Markdown (`.md`) files from your device, then open a book from your shelf to listen or read it. Imported books and reading position remain in memory for the current session.
 
-Cloud voice API keys are not included in the web build. To use a cloud voice, enter its key in the narrator screen for the current browser session; the app does not save it. The browser sends the key directly to the chosen voice provider. For safer public use, prefer device voices or put provider calls behind a server.
+Cloud voice API keys are not included in the web build to avoid exposing them in the browser. Local native runs load keys from `Api.env` automatically. For web, use device voices or configure cloud voice access through a trusted server.
 
 Run `npm start`, `npm run android`, or `npm run ios` to start native development with values from the local `Api.env` file. Use `npm run web` for web development; it does not load `Api.env`.
 

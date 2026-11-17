@@ -138,7 +138,6 @@ function Reader({ account, signedIn, onExit, isSigningOut, accountNotice }: Read
   const envGoogle = (process.env.EXPO_PUBLIC_GOOGLE_TTS_KEY as string | undefined) || '';
   const envEleven = (process.env.EXPO_PUBLIC_ELEVENLABS_KEY as string | undefined) || '';
   const [keys, setKeys] = useState<Keys>({ google: envGoogle, eleven: envEleven });
-  const [keyInput, setKeyInput] = useState('');
   const [cloudTab, setCloudTab] = useState<'eleven' | 'google'>(envEleven || !envGoogle ? 'eleven' : 'google');
   const [elevenVoices, setElevenVoices] = useState<CloudVoice[]>([]);
   const [elevenLoading, setElevenLoading] = useState(false);
@@ -423,16 +422,6 @@ function Reader({ account, signedIn, onExit, isSigningOut, accountNotice }: Read
       stopAll();
       Speech.speak('Hello, I will be your narrator.', { voice: v.identifier, rate: speechRate });
     }
-  };
-
-  const saveKey = () => {
-    const key = keyInput.trim();
-    if (!key) return;
-    setKeys((prev) => ({ ...prev, [cloudTab]: key }));
-    setCloudVoice(cloudTab === 'google' ? GOOGLE_VOICES[0] : DEFAULT_ELEVEN_VOICE);
-    setEngine('cloud');
-    setKeyInput('');
-    setError(null);
   };
 
   // -------------------------------------------------------------------------
@@ -758,26 +747,9 @@ function Reader({ account, signedIn, onExit, isSigningOut, accountNotice }: Read
                     <Text style={styles.tipTitle}>Cloud voice not configured</Text>
                     <Text style={styles.tipText}>
                       {Platform.OS === 'web'
-                        ? 'Enter your API key for this browser session. It stays in memory and is cleared when you reload or close the page.'
+                        ? 'Cloud voice keys are not included in the web build to protect your account. Choose “On this device” or configure cloud voice access through a trusted server.'
                         : `Add EXPO_PUBLIC_${cloudTab === 'eleven' ? 'ELEVENLABS' : 'GOOGLE_TTS'}_KEY to Api.env and restart the demo. You can also choose “On this device”.`}
                     </Text>
-                    {Platform.OS === 'web' && (
-                      <View style={styles.keyRow}>
-                        <TextInput
-                          style={styles.keyInput}
-                          placeholder="API key (this session only)"
-                          placeholderTextColor={C.textMuted}
-                          value={keyInput}
-                          onChangeText={setKeyInput}
-                          autoCapitalize="none"
-                          autoCorrect={false}
-                          secureTextEntry
-                        />
-                        <TouchableOpacity style={styles.keyBtn} onPress={saveKey}>
-                          <Text style={styles.keyBtnText}>Use key</Text>
-                        </TouchableOpacity>
-                      </View>
-                    )}
                   </View>
                 )}
 
@@ -978,10 +950,6 @@ const styles = StyleSheet.create({
   tipCard: { backgroundColor: C.surfaceAlt, borderRadius: 14, padding: 14, marginBottom: 12, borderLeftWidth: 3, borderLeftColor: C.cyan },
   tipTitle: { color: C.text, fontSize: 14, fontWeight: '800', marginBottom: 4 },
   tipText: { color: C.textDim, fontSize: 12, lineHeight: 18 },
-  keyRow: { flexDirection: 'row', gap: 8, marginTop: 10 },
-  keyInput: { flex: 1, backgroundColor: C.bg, borderRadius: 10, paddingHorizontal: 12, color: C.text, borderWidth: 1, borderColor: C.border },
-  keyBtn: { backgroundColor: C.purple, borderRadius: 10, paddingHorizontal: 16, justifyContent: 'center' },
-  keyBtnText: { color: '#fff', fontWeight: '800' },
 
   voiceItem: {
     flexDirection: 'row', alignItems: 'center', padding: 12, borderRadius: 16, backgroundColor: C.bg,
