@@ -17,6 +17,7 @@ import {
 } from './src/Tts';
 import { BookResult } from './src/Books';
 import LibraryScreen, { ShelfItem } from './Libraryscreen';
+import AccountScreen from './AccountScreen';
 import AuthScreen from './AuthScreen';
 import { auth } from './src/FirebaseAuth';
 
@@ -71,6 +72,7 @@ export default function App() {
   return (
     <Reader
       key={user ? `account:${user.uid}` : 'guest'}
+      account={user}
       signedIn={!!user}
       onExit={leaveReader}
       isSigningOut={isSigningOut}
@@ -82,13 +84,14 @@ export default function App() {
 }
 
 type ReaderProps = {
+  account: User | null;
   signedIn: boolean;
   onExit: () => void;
   isSigningOut: boolean;
   accountNotice: string;
 };
 
-function Reader({ signedIn, onExit, isSigningOut, accountNotice }: ReaderProps) {
+function Reader({ account, signedIn, onExit, isSigningOut, accountNotice }: ReaderProps) {
   const defaultBook =
     `Chapter 1: The Modern Audiobook\n\n` +
     `Welcome to EchoReader. Open the Library tab to borrow a classic book, then press play. ` +
@@ -100,9 +103,10 @@ function Reader({ signedIn, onExit, isSigningOut, accountNotice }: ReaderProps) 
   const [author, setAuthor] = useState('EchoReader Edition');
   const [documentText, setDocumentText] = useState(cleanDocumentText(defaultBook));
   const [shelf, setShelf] = useState<ShelfItem[]>([]);
+  const [profilePhotoUri, setProfilePhotoUri] = useState<string | null>(account?.photoURL || null);
 
   // --- ui
-  const [screen, setScreen] = useState<'listen' | 'library'>('listen');
+  const [screen, setScreen] = useState<'listen' | 'library' | 'account'>('listen');
   const [viewMode, setViewMode] = useState<'player' | 'reader'>('player');
   const [isVoiceModalOpen, setIsVoiceModalOpen] = useState(false);
   const [voiceTab, setVoiceTab] = useState<'cloud' | 'device'>('cloud');
@@ -526,7 +530,17 @@ function Reader({ signedIn, onExit, isSigningOut, accountNotice }: ReaderProps) 
       )}
 
       {/* BODY */}
-      {screen === 'library' ? (
+      {screen === 'account' ? (
+        <AccountScreen
+          displayName={account?.displayName || ''}
+          email={account?.email || ''}
+          profilePhotoUri={profilePhotoUri}
+          onProfilePhotoChange={setProfilePhotoUri}
+          books={shelf}
+          onOpenBook={onOpenShelf}
+          onAddBooks={() => setScreen('library')}
+        />
+      ) : screen === 'library' ? (
         <LibraryScreen shelf={shelf} onImport={onImportBook} onOpen={onOpenShelf} />
       ) : viewMode === 'player' ? (
         <View style={styles.playerContainer}>
@@ -635,6 +649,7 @@ function Reader({ signedIn, onExit, isSigningOut, accountNotice }: ReaderProps) 
         {([
           ['listen', 'Listen', 'headset'],
           ['library', 'Library', 'library'],
+          ['account', 'Account', 'person'],
         ] as const).map(([key, label, icon]) => {
           const active = screen === key;
           return (

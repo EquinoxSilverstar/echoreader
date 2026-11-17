@@ -349,3 +349,6 @@ const styles = StyleSheet.create({
   guestText: { color: C.text, fontSize: 14, fontWeight: '700' },
   footerText: { color: C.textMuted, textAlign: 'center', fontSize: 11, marginTop: 22 },
 });
+
+
+

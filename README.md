@@ -31,4 +31,4 @@ Run `npm start`, `npm run android`, or `npm run ios` to start native development
 
 For local development, put the same four values in `.env.local`. For a local production export, set them in your shell before running `npm run build:web`, which skips loading dotenv files. These are public client configuration values. Keep service-account credentials and voice provider keys out of the client build.
 
-Guest mode works without Firebase configuration. Accounts handle sign-in and password recovery.
+Guest mode works without Firebase configuration. Accounts handle sign-in and password recovery. The Account tab shows the books imported during the current session and lets users choose a profile picture for that session.
