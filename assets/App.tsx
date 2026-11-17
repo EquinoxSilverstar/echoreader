@@ -110,7 +110,7 @@ function Reader({ account, signedIn, onExit, isSigningOut, accountNotice }: Read
   const [screen, setScreen] = useState<'listen' | 'library' | 'account'>('listen');
   const [viewMode, setViewMode] = useState<'player' | 'reader'>('player');
   const [isVoiceModalOpen, setIsVoiceModalOpen] = useState(false);
-  const [voiceTab, setVoiceTab] = useState<'cloud' | 'device'>('cloud');
+ const [voiceTab, setVoiceTab] = useState<'cloud' | 'device'>('device');
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [customInput, setCustomInput] = useState('');
   const [trackWidth, setTrackWidth] = useState(1);
@@ -139,6 +139,7 @@ function Reader({ account, signedIn, onExit, isSigningOut, accountNotice }: Read
   const envEleven = (process.env.EXPO_PUBLIC_ELEVENLABS_KEY as string | undefined) || '';
   const [keys, setKeys] = useState<Keys>({ google: envGoogle, eleven: envEleven });
   const [cloudTab, setCloudTab] = useState<'eleven' | 'google'>(envEleven || !envGoogle ? 'eleven' : 'google');
+  
   const [elevenVoices, setElevenVoices] = useState<CloudVoice[]>([]);
   const [elevenLoading, setElevenLoading] = useState(false);
   const [engine, setEngine] = useState<'cloud' | 'device'>(envEleven || envGoogle ? 'cloud' : 'device');
@@ -570,7 +571,10 @@ function Reader({ account, signedIn, onExit, isSigningOut, accountNotice }: Read
             <Text style={styles.bookAuthor} numberOfLines={1}>{author}</Text>
           </View>
 
-          <TouchableOpacity style={styles.voiceSelectorBtn} onPress={() => { setVoiceTab(useCloud ? 'cloud' : voiceTab); setIsVoiceModalOpen(true); }} activeOpacity={0.8}>
+          <TouchableOpacity style={styles.voiceSelectorBtn} onPress={() => {
+            setVoiceTab(useCloud ? 'cloud' : 'device');
+            setIsVoiceModalOpen(true);
+          }} activeOpacity={0.8}>
             <Icon name={useCloud ? 'sparkles' : 'phone-portrait-outline'} size={15} color={C.magenta} />
             <Text style={styles.voiceSelectorText} numberOfLines={1}>
               Narrator: <Text style={styles.voiceSelectorName}>{voiceName}</Text>
@@ -682,6 +686,7 @@ function Reader({ account, signedIn, onExit, isSigningOut, accountNotice }: Read
                 accessibilityLabel="Cancel"
                 disabled={isSigningOut}
               >
+                <View style={styles.closeBtnInner} />
                 <Icon name="close" size={20} color={C.textDim} />
               </TouchableOpacity>
             </View>
@@ -970,4 +975,14 @@ const styles = StyleSheet.create({
   modalBtnRow: { flexDirection: 'row', justifyContent: 'flex-end', gap: 12, marginTop: 16 },
   modalCancelBtn: { paddingVertical: 11, paddingHorizontal: 18, borderRadius: 12, backgroundColor: C.surfaceAlt },
   modalSaveBtn: { paddingVertical: 11, paddingHorizontal: 22, borderRadius: 12, backgroundColor: C.purple },
+  modalBtnText: { color: C.text, fontSize: 15, fontWeight: '700' },
+  modalBtnTextCancel: { color: C.textDim, fontSize: 15, fontWeight: '700' },
+
+  icon: { width: 24, height: 24, borderRadius: 12, backgroundColor: C.surfaceAlt, alignItems: 'center', justifyContent: 'center' },
+
+  closeBtnInner: {
+    position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, borderRadius: 17,
+    borderWidth: 1, borderColor: C.border,
+  },
+  
 });
