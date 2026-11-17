@@ -17,3 +17,4 @@ if (result.status !== 0) process.exit(result.status || 1);
 
 mkdirSync('dist', { recursive: true });
 writeFileSync(path.join('dist', '.nojekyll'), '');
+

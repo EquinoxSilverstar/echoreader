@@ -6,7 +6,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import * as Speech from 'expo-speech';
-import { onAuthStateChanged, signOut, type User } from 'firebase/auth';
+import { onAuthStateChanged, signOut, updateProfile, type User } from 'firebase/auth';
 
 import { C } from './src/Theme';
 import { Icon } from './src/Icon';
@@ -93,17 +93,18 @@ type ReaderProps = {
 
 function Reader({ account, signedIn, onExit, isSigningOut, accountNotice }: ReaderProps) {
   const defaultBook =
-    `Chapter 1: The Modern Audiobook\n\n` +
+    `Chapter 1: Sit back and let Echo read\n\n` +
     `Welcome to EchoReader. Open the Library tab to borrow a classic book, then press play. ` +
     `Notice how bracket citations [1] and footnotes [2, 3] are cleaned out automatically, so the narration flows uninterrupted.\n\n` +
     `Tap the narrator button to choose a natural cloud voice, adjust the speed, or switch to Read-Along mode in the top right.`;
 
   // --- content
-  const [title, setTitle] = useState('The Modern Audiobook');
+  const [title, setTitle] = useState('Sit back and let Echo read');
   const [author, setAuthor] = useState('EchoReader Edition');
   const [documentText, setDocumentText] = useState(cleanDocumentText(defaultBook));
   const [shelf, setShelf] = useState<ShelfItem[]>([]);
   const [profilePhotoUri, setProfilePhotoUri] = useState<string | null>(account?.photoURL || null);
+  const [accountName, setAccountName] = useState(account?.displayName || '');
 
   // --- ui
   const [screen, setScreen] = useState<'listen' | 'library' | 'account'>('listen');
@@ -113,6 +114,17 @@ function Reader({ account, signedIn, onExit, isSigningOut, accountNotice }: Read
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [customInput, setCustomInput] = useState('');
   const [trackWidth, setTrackWidth] = useState(1);
+  const [isExitConfirmOpen, setIsExitConfirmOpen] = useState(false);
+
+  const saveAccountName = async (name: string) => {
+    if (!account) throw new Error('You must be signed in to update your account name.');
+    try {
+      await updateProfile(account, { displayName: name });
+      setAccountName(name);
+    } catch {
+      throw new Error('Could not update your name. Check your connection and try again.');
+    }
+  };
 
   // --- playback
   const [isPlaying, setIsPlaying] = useState(false);
@@ -516,7 +528,7 @@ function Reader({ account, signedIn, onExit, isSigningOut, accountNotice }: Read
         ) : null}
         <TouchableOpacity
           style={styles.roundBtn}
-          onPress={onExit}
+          onPress={() => setIsExitConfirmOpen(true)}
           accessibilityRole="button"
           accessibilityLabel={signedIn ? 'Sign out' : 'Return to sign in'}
           accessibilityState={{ busy: isSigningOut }}
@@ -531,15 +543,18 @@ function Reader({ account, signedIn, onExit, isSigningOut, accountNotice }: Read
 
       {/* BODY */}
       {screen === 'account' ? (
-        <AccountScreen
-          displayName={account?.displayName || ''}
-          email={account?.email || ''}
-          profilePhotoUri={profilePhotoUri}
-          onProfilePhotoChange={setProfilePhotoUri}
-          books={shelf}
-          onOpenBook={onOpenShelf}
-          onAddBooks={() => setScreen('library')}
-        />
+        signedIn ? (
+          <AccountScreen
+            displayName={accountName}
+            email={account?.email || ''}
+            profilePhotoUri={profilePhotoUri}
+            onProfilePhotoChange={setProfilePhotoUri}
+            onUpdateName={saveAccountName}
+            books={shelf}
+            onOpenBook={onOpenShelf}
+            onAddBooks={() => setScreen('library')}
+          />
+        ) : null
       ) : screen === 'library' ? (
         <LibraryScreen shelf={shelf} onImport={onImportBook} onOpen={onOpenShelf} />
       ) : viewMode === 'player' ? (
@@ -649,7 +664,7 @@ function Reader({ account, signedIn, onExit, isSigningOut, accountNotice }: Read
         {([
           ['listen', 'Listen', 'headset'],
           ['library', 'Library', 'library'],
-          ['account', 'Account', 'person'],
+          ...(signedIn ? [['account', 'Account', 'person'] as const] : []),
         ] as const).map(([key, label, icon]) => {
           const active = screen === key;
           return (
@@ -660,6 +675,54 @@ function Reader({ account, signedIn, onExit, isSigningOut, accountNotice }: Read
           );
         })}
       </View>
+
+      <Modal
+        visible={isExitConfirmOpen}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setIsExitConfirmOpen(false)}
+      >
+        <View style={styles.modalBackdrop}>
+          <View style={styles.confirmBox}>
+            <View style={styles.modalHeaderRow}>
+              <Text style={styles.modalTitle}>{signedIn ? 'Sign out?' : 'Leave guest mode?'}</Text>
+              <TouchableOpacity
+                onPress={() => setIsExitConfirmOpen(false)}
+                style={styles.closeBtn}
+                accessibilityRole="button"
+                accessibilityLabel="Cancel"
+                disabled={isSigningOut}
+              >
+                <Icon name="close" size={20} color={C.textDim} />
+              </TouchableOpacity>
+            </View>
+            <Text style={styles.confirmText}>
+              {signedIn
+                ? 'Are you sure you want to sign out of your account?'
+                : 'Are you sure you want to leave guest mode and return to sign in?'}
+            </Text>
+            <View style={styles.confirmActions}>
+              <TouchableOpacity
+                style={styles.confirmCancelButton}
+                onPress={() => setIsExitConfirmOpen(false)}
+                disabled={isSigningOut}
+              >
+                <Text style={styles.confirmCancelText}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={styles.confirmExitButton}
+                onPress={() => { setIsExitConfirmOpen(false); void onExit(); }}
+                disabled={isSigningOut}
+                accessibilityState={{ busy: isSigningOut }}
+              >
+                {isSigningOut
+                  ? <ActivityIndicator size="small" color="#fff" />
+                  : <Text style={styles.confirmExitText}>{signedIn ? 'Sign out' : 'Leave guest mode'}</Text>}
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
 
       {/* VOICE MODAL */}
       <Modal visible={isVoiceModalOpen} animationType="slide" transparent onRequestClose={() => setIsVoiceModalOpen(false)}>
@@ -896,6 +959,13 @@ const styles = StyleSheet.create({
 
   modalBackdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.88)', justifyContent: 'center', padding: 20 },
   modalBox: { backgroundColor: C.surface, borderRadius: 26, padding: 20, maxHeight: '86%', borderWidth: 1, borderColor: C.border },
+  confirmBox: { backgroundColor: C.surface, borderRadius: 22, padding: 20, borderWidth: 1, borderColor: C.border },
+  confirmText: { color: C.textDim, fontSize: 14, lineHeight: 21, marginBottom: 20 },
+  confirmActions: { flexDirection: 'row', justifyContent: 'flex-end', alignItems: 'center', gap: 10 },
+  confirmCancelButton: { minHeight: 42, justifyContent: 'center', paddingHorizontal: 14, borderRadius: 12, backgroundColor: C.surfaceAlt },
+  confirmCancelText: { color: C.textDim, fontSize: 13, fontWeight: '700' },
+  confirmExitButton: { minHeight: 42, minWidth: 92, justifyContent: 'center', alignItems: 'center', paddingHorizontal: 14, borderRadius: 12, backgroundColor: C.purple },
+  confirmExitText: { color: '#fff', fontSize: 13, fontWeight: '800' },
   modalHeaderRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 },
   modalTitle: { color: C.text, fontSize: 19, fontWeight: '800' },
   closeBtn: { width: 34, height: 34, borderRadius: 17, backgroundColor: C.surfaceAlt, alignItems: 'center', justifyContent: 'center' },

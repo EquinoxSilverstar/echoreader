@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import {
-  ActivityIndicator, FlatList, Image, StyleSheet, Text, TouchableOpacity, View,
+  ActivityIndicator, FlatList, Image, StyleSheet, Text, TextInput, TouchableOpacity, View,
 } from 'react-native';
 import * as DocumentPicker from 'expo-document-picker';
 import { Icon } from './src/Icon';
@@ -12,17 +12,45 @@ type Props = {
   email: string;
   profilePhotoUri: string | null;
   onProfilePhotoChange: (uri: string) => void;
+  onUpdateName: (name: string) => Promise<void>;
   books: ShelfItem[];
   onOpenBook: (book: ShelfItem) => void;
   onAddBooks: () => void;
 };
 
 export default function AccountScreen({
-  displayName, email, profilePhotoUri, onProfilePhotoChange, books, onOpenBook, onAddBooks,
+  displayName, email, profilePhotoUri, onProfilePhotoChange, onUpdateName, books, onOpenBook, onAddBooks,
 }: Props) {
   const [isPickingPhoto, setIsPickingPhoto] = useState(false);
   const [photoError, setPhotoError] = useState('');
+  const [isEditingName, setIsEditingName] = useState(false);
+  const [draftName, setDraftName] = useState(displayName);
+  const [isSavingName, setIsSavingName] = useState(false);
+  const [nameError, setNameError] = useState('');
+  const [nameSaved, setNameSaved] = useState(false);
   const initials = displayName.trim().slice(0, 1).toUpperCase() || 'G';
+
+  const saveName = async () => {
+    const name = draftName.trim();
+    if (!name) {
+      setNameError('Enter your name before saving.');
+      return;
+    }
+
+    setNameError('');
+    setNameSaved(false);
+    setIsSavingName(true);
+    try {
+      await onUpdateName(name);
+      setDraftName(name);
+      setIsEditingName(false);
+      setNameSaved(true);
+    } catch (error) {
+      setNameError(error instanceof Error ? error.message : 'Could not update your name. Try again.');
+    } finally {
+      setIsSavingName(false);
+    }
+  };
 
   const chooseProfilePhoto = async () => {
     setPhotoError('');
@@ -71,6 +99,47 @@ export default function AccountScreen({
                   <Text style={styles.email} numberOfLines={2}>{email || 'Guest session'}</Text>
                 </View>
               </View>
+              {isEditingName ? (
+                <View style={styles.nameEditor}>
+                  <TextInput
+                    accessibilityLabel="Account name"
+                    style={styles.nameInput}
+                    value={draftName}
+                    onChangeText={setDraftName}
+                    placeholder="Your name"
+                    placeholderTextColor={C.textMuted}
+                    autoCapitalize="words"
+                    autoCorrect={false}
+                    returnKeyType="done"
+                    onSubmitEditing={saveName}
+                    editable={!isSavingName}
+                  />
+                  <TouchableOpacity style={styles.nameSaveButton} onPress={saveName} disabled={isSavingName}>
+                    {isSavingName
+                      ? <ActivityIndicator size="small" color="#fff" />
+                      : <Text style={styles.nameSaveText}>Save</Text>}
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={styles.nameCancelButton}
+                    onPress={() => { setIsEditingName(false); setDraftName(displayName); setNameError(''); }}
+                    disabled={isSavingName}
+                  >
+                    <Text style={styles.nameCancelText}>Cancel</Text>
+                  </TouchableOpacity>
+                </View>
+              ) : (
+                <TouchableOpacity
+                  style={styles.nameEditButton}
+                  onPress={() => { setDraftName(displayName); setIsEditingName(true); setNameError(''); setNameSaved(false); }}
+                  accessibilityRole="button"
+                  accessibilityLabel="Change account name"
+                >
+                  <Icon name="create-outline" size={17} color={C.cyan} />
+                  <Text style={styles.photoButtonText}>Change name</Text>
+                </TouchableOpacity>
+              )}
+              {!!nameError && <Text style={styles.error} accessibilityLiveRegion="polite">{nameError}</Text>}
+              {nameSaved && <Text style={styles.success} accessibilityLiveRegion="polite">Name updated.</Text>}
               <TouchableOpacity
                 style={styles.photoButton}
                 onPress={chooseProfilePhoto}
@@ -152,7 +221,15 @@ const styles = StyleSheet.create({
     minHeight: 42, marginTop: 14, borderRadius: 12, backgroundColor: C.surfaceAlt,
   },
   photoButtonText: { color: C.cyan, fontSize: 13, fontWeight: '700' },
+  nameEditButton: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, minHeight: 40, marginTop: 10 },
+  nameEditor: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 14 },
+  nameInput: { flex: 1, minWidth: 0, color: C.text, backgroundColor: C.bg, borderRadius: 10, paddingHorizontal: 12, paddingVertical: 10, borderWidth: 1, borderColor: C.border },
+  nameSaveButton: { minWidth: 56, minHeight: 40, alignItems: 'center', justifyContent: 'center', backgroundColor: C.purple, borderRadius: 10, paddingHorizontal: 12 },
+  nameSaveText: { color: '#fff', fontSize: 12, fontWeight: '800' },
+  nameCancelButton: { minHeight: 40, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 4 },
+  nameCancelText: { color: C.textMuted, fontSize: 12, fontWeight: '700' },
   error: { color: C.danger, fontSize: 12, marginTop: 10 },
+  success: { color: C.cyan, fontSize: 12, marginTop: 8 },
   sectionHeading: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 26, marginBottom: 12,
   },
