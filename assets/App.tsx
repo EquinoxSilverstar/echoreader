@@ -12,7 +12,8 @@ import { C } from './src/Theme';
 import { Icon } from './src/Icon';
 import { cleanDocumentText, buildChunks, findNarrationStart } from './src/Text';
 import {
-  GOOGLE_VOICES, DEFAULT_ELEVEN_VOICE, CloudVoice, DeviceVoice, Keys, rankDeviceVoices, synthesize, fetchElevenVoices,
+  GOOGLE_VOICES, DEFAULT_ELEVEN_VOICE, CloudVoice, DeviceVoice, Keys, rankDeviceVoices, synthesize,
+  fetchTtsStatus, fetchElevenVoices, fetchGoogleVoices,
   playbackRateFor, playUri, tierColor, langLabel, releaseAudioUri, prepareAudioPlayback,
 } from './src/Tts';
 import { BookResult } from './src/Books';
@@ -135,19 +136,24 @@ function Reader({ account, signedIn, onExit, isSigningOut, accountNotice }: Read
   const [error, setError] = useState<string | null>(null);
 
   // --- voices
-  const envGoogle = (process.env.EXPO_PUBLIC_GOOGLE_TTS_KEY as string | undefined) || '';
-  const envEleven = (process.env.EXPO_PUBLIC_ELEVENLABS_KEY as string | undefined) || '';
-  const [keys, setKeys] = useState<Keys>({ google: envGoogle, eleven: envEleven });
-  const [cloudTab, setCloudTab] = useState<'eleven' | 'google'>(envEleven || !envGoogle ? 'eleven' : 'google');
-  
+  const [providerAvailability, setProviderAvailability] = useState<Keys>({ google: false, eleven: false });
+  const [cloudStatusLoading, setCloudStatusLoading] = useState(false);
+  const [cloudStatusError, setCloudStatusError] = useState('');
+  const [elevenVoiceError, setElevenVoiceError] = useState('');
+  const [googleVoiceError, setGoogleVoiceError] = useState('');
+  const [cloudTab, setCloudTab] = useState<'eleven' | 'google'>('eleven');
   const [elevenVoices, setElevenVoices] = useState<CloudVoice[]>([]);
+  const [googleVoices, setGoogleVoices] = useState<CloudVoice[]>(GOOGLE_VOICES);
   const [elevenLoading, setElevenLoading] = useState(false);
-  const [engine, setEngine] = useState<'cloud' | 'device'>(envEleven || envGoogle ? 'cloud' : 'device');
-  const [cloudVoice, setCloudVoice] = useState<CloudVoice>(envEleven ? DEFAULT_ELEVEN_VOICE : GOOGLE_VOICES[0]);
+  const [googleLoading, setGoogleLoading] = useState(false);
+  const [engine, setEngine] = useState<'cloud' | 'device'>('device');
+  const [cloudVoice, setCloudVoice] = useState<CloudVoice>(DEFAULT_ELEVEN_VOICE);
   const [deviceVoices, setDeviceVoices] = useState<DeviceVoice[]>([]);
   const [deviceVoice, setDeviceVoice] = useState<DeviceVoice | undefined>(undefined);
+  const [deviceVoicesLoading, setDeviceVoicesLoading] = useState(true);
+  const [deviceVoiceError, setDeviceVoiceError] = useState('');
 
-  const useCloud = engine === 'cloud' && keys[cloudVoice.provider].length > 0;
+  const useCloud = engine === 'cloud' && providerAvailability[cloudVoice.provider];
   const voiceName = useCloud ? cloudVoice.label : deviceVoice?.label || 'System voice';
 
   const sessionRef = useRef(0);
@@ -171,28 +177,118 @@ function Reader({ account, signedIn, onExit, isSigningOut, accountNotice }: Read
 
   // load device voices
   useEffect(() => {
+    let active = true;
     (async () => {
       try {
         const ranked = rankDeviceVoices(await Speech.getAvailableVoicesAsync());
+        if (!active) return;
         setDeviceVoices(ranked);
-        if (ranked[0]) setDeviceVoice(ranked[0]);
-      } catch (e) { console.log('Voice load error', e); }
+        setDeviceVoice((current) => current && ranked.some((voice) => voice.identifier === current.identifier)
+          ? current
+          : ranked[0]);
+        setDeviceVoiceError(ranked.length ? '' : 'No selectable voices were returned. EchoReader can still try the system default voice.');
+      } catch (e) {
+        if (!active) return;
+        setDeviceVoices([]);
+        setDeviceVoice(undefined);
+        setDeviceVoiceError(e instanceof Error
+          ? `Could not load device voices: ${e.message}`
+          : 'Could not load device voices. EchoReader can still try the system default voice.');
+      } finally {
+        if (active) setDeviceVoicesLoading(false);
+      }
     })();
-    return () => { stopAll(); };
+    return () => {
+      active = false;
+      stopAll();
+    };
   }, []);
 
-  // load the ElevenLabs voices for this account
+  // Cloud state comes from the authenticated backend; device narration never depends on it.
   useEffect(() => {
-    if (!keys.eleven) { setElevenVoices([]); return; }
-    setElevenLoading(true);
-    fetchElevenVoices(keys.eleven)
-      .then((v) => {
-        setElevenVoices(v);
-        setCloudVoice((cur) => (cur.provider === 'eleven' && v.some((x) => x.id === cur.id) ? cur : cur.provider === 'eleven' && v[0] ? v[0] : cur));
+    let active = true;
+    if (!signedIn) {
+      setProviderAvailability({ google: false, eleven: false });
+      setCloudStatusError('Sign in to use cloud narration. Device voices are available in guest mode.');
+      setCloudStatusLoading(false);
+      return () => { active = false; };
+    }
+
+    setCloudStatusLoading(true);
+    setCloudStatusError('');
+    fetchTtsStatus()
+      .then((providers) => {
+        if (!active) return;
+        setProviderAvailability(providers);
+        if (!providers.eleven && providers.google) setCloudTab('google');
+        if (!providers.eleven && !providers.google) {
+          setEngine('device');
+          setCloudStatusError('No cloud narrator is configured on the secure backend. Device voices are still available.');
+        }
       })
-      .catch((e) => setError(e?.message || 'Could not load ElevenLabs voices.'))
-      .finally(() => setElevenLoading(false));
-  }, [keys.eleven]);
+      .catch((e: unknown) => {
+        if (!active) return;
+        setProviderAvailability({ google: false, eleven: false });
+        setEngine('device');
+        setCloudStatusError(e instanceof Error
+          ? e.message
+          : 'The secure narration service could not be reached. Device voices are still available.');
+      })
+      .finally(() => { if (active) setCloudStatusLoading(false); });
+    return () => { active = false; };
+  }, [signedIn]);
+
+  useEffect(() => {
+    let active = true;
+    if (!providerAvailability.eleven) {
+      setElevenVoices([]);
+      setElevenLoading(false);
+      setElevenVoiceError('');
+      return () => { active = false; };
+    }
+    setElevenLoading(true);
+    setElevenVoiceError('');
+    fetchElevenVoices()
+      .then((voices) => {
+        if (!active) return;
+        setElevenVoices(voices);
+        if (voices.length === 0) setElevenVoiceError('No ElevenLabs voices are available for this account.');
+        setCloudVoice((current) => current.provider === 'eleven' && voices.some((voice) => voice.id === current.id)
+          ? current
+          : current.provider === 'eleven' && voices[0] ? voices[0] : current);
+      })
+      .catch((e: unknown) => {
+        if (active) setElevenVoiceError(e instanceof Error ? e.message : 'Could not load ElevenLabs voices.');
+      })
+      .finally(() => { if (active) setElevenLoading(false); });
+    return () => { active = false; };
+  }, [providerAvailability.eleven]);
+
+  useEffect(() => {
+    let active = true;
+    if (!providerAvailability.google) {
+      setGoogleVoices([]);
+      setGoogleLoading(false);
+      setGoogleVoiceError('');
+      return () => { active = false; };
+    }
+    setGoogleLoading(true);
+    setGoogleVoiceError('');
+    fetchGoogleVoices()
+      .then((voices) => {
+        if (!active) return;
+        setGoogleVoices(voices);
+        if (voices.length === 0) setGoogleVoiceError('No Google voices are currently available.');
+        setCloudVoice((current) => current.provider === 'google' && voices.some((voice) => voice.id === current.id)
+          ? current
+          : current.provider === 'google' && voices[0] ? voices[0] : current);
+      })
+      .catch((e: unknown) => {
+        if (active) setGoogleVoiceError(e instanceof Error ? e.message : 'Could not load Google voices.');
+      })
+      .finally(() => { if (active) setGoogleLoading(false); });
+    return () => { active = false; };
+  }, [providerAvailability.google]);
 
   // new document -> reset
   useEffect(() => () => clearAudioCache(), [documentText]);
@@ -258,7 +354,7 @@ function Reader({ account, signedIn, onExit, isSigningOut, accountNotice }: Read
       const c = chunks[i];
       const key = `${cv.provider}|${cv.id}|${rate}|${i}`;
       if (!cacheRef.current.has(key)) {
-        const p = synthesize(documentText.slice(c.start, c.end), cv, rate, keys);
+          const p = synthesize(documentText.slice(c.start, c.end), cv, rate);
         cacheRef.current.set(key, p);
         p.catch(() => cacheRef.current.delete(key));
       }
@@ -279,7 +375,7 @@ function Reader({ account, signedIn, onExit, isSigningOut, accountNotice }: Read
         if (cloud) {
           setIsBuffering(true);
           try {
-            const uri = await synthesize(intro, cv, rate, keys);
+            const uri = await synthesize(intro, cv, rate);
             if (session !== sessionRef.current) return;
             setIsBuffering(false);
             stopAudioRef.current = playUri(
@@ -296,16 +392,29 @@ function Reader({ account, signedIn, onExit, isSigningOut, accountNotice }: Read
             if (session !== sessionRef.current) return;
             setIsBuffering(false);
             setIsPlaying(false);
-            setError(e?.message || 'Could not generate speech.');
+            setEngine('device');
+            setVoiceTab('device');
+            setError(`${e?.message || 'Could not generate speech.'} Switched to device narration. Press Play to continue.`);
           }
         } else {
-          Speech.speak(intro, {
-            voice: dv?.identifier,
-            rate,
-            pitch: 1.0,
-            onDone: () => { void run(idx); },
-            onError: () => { if (session === sessionRef.current) setIsPlaying(false); },
-          });
+          try {
+            Speech.speak(intro, {
+              voice: dv?.identifier,
+              rate,
+              pitch: 1.0,
+              onDone: () => { void run(idx); },
+              onError: (speechError) => {
+                if (session !== sessionRef.current) return;
+                setIsPlaying(false);
+                setError(speechError.message || 'Device narration failed. Try another device voice.');
+              },
+            });
+          } catch (speechError) {
+            if (session === sessionRef.current) {
+              setIsPlaying(false);
+              setError(speechError instanceof Error ? speechError.message : 'Device narration is unavailable on this device.');
+            }
+          }
         }
         return;
       }
@@ -334,20 +443,33 @@ function Reader({ account, signedIn, onExit, isSigningOut, accountNotice }: Read
           if (session !== sessionRef.current) return;
           setIsBuffering(false);
           setIsPlaying(false);
-          setError(e?.message || 'Could not generate speech.');
+          setEngine('device');
+          setVoiceTab('device');
+          setError(`${e?.message || 'Could not generate speech.'} Switched to device narration. Press Play to continue.`);
         }
       } else {
-        Speech.speak(documentText.slice(c.start, c.end), {
-          voice: dv?.identifier,
-          rate,
-          pitch: 1.0,
-          onBoundary: (ev: any) => {
-            if (session !== sessionRef.current) return;
-            if (ev?.charIndex !== undefined) setWordRange({ start: c.start + ev.charIndex, length: ev.charLength || 4 });
-          },
-          onDone: () => { void run(idx + 1); },
-          onError: () => { if (session === sessionRef.current) setIsPlaying(false); },
-        });
+        try {
+          Speech.speak(documentText.slice(c.start, c.end), {
+            voice: dv?.identifier,
+            rate,
+            pitch: 1.0,
+            onBoundary: (ev: any) => {
+              if (session !== sessionRef.current) return;
+              if (ev?.charIndex !== undefined) setWordRange({ start: c.start + ev.charIndex, length: ev.charLength || 4 });
+            },
+            onDone: () => { void run(idx + 1); },
+            onError: (speechError) => {
+              if (session !== sessionRef.current) return;
+              setIsPlaying(false);
+              setError(speechError.message || 'Device narration failed. Try another device voice.');
+            },
+          });
+        } catch (speechError) {
+          if (session === sessionRef.current) {
+            setIsPlaying(false);
+            setError(speechError instanceof Error ? speechError.message : 'Device narration is unavailable on this device.');
+          }
+        }
       }
     };
     run(playbackStartIdx);
@@ -391,7 +513,7 @@ function Reader({ account, signedIn, onExit, isSigningOut, accountNotice }: Read
     stopAll();
     setError(null);
     try {
-      const uri = await synthesize('Hello, I will be your narrator.', v, speechRate, keys);
+      const uri = await synthesize('Hello, I will be your narrator.', v, speechRate);
       const session = sessionRef.current;
       stopAudioRef.current = playUri(
         uri,
@@ -402,14 +524,21 @@ function Reader({ account, signedIn, onExit, isSigningOut, accountNotice }: Read
         }
       );
     } catch (e: any) {
+      setEngine('device');
+      setVoiceTab('device');
       setError(e?.message || 'Could not play a sample.');
     }
   };
 
   const pickCloudVoice = (v: CloudVoice) => {
+    if (!providerAvailability[v.provider]) {
+      setEngine('device');
+      setVoiceTab('device');
+      setError(`${v.provider === 'eleven' ? 'ElevenLabs' : 'Google'} narration is not available. Switched to a device voice.`);
+      return;
+    }
     setCloudVoice(v);
     setEngine('cloud');
-    if (!keys[v.provider]) return;
     if (isPlaying) playFrom(chunkIndex, { cloudVoice: v, cloud: true });
     else audition(v);
   };
@@ -421,7 +550,16 @@ function Reader({ account, signedIn, onExit, isSigningOut, accountNotice }: Read
       playFrom(chunkIndex, { deviceVoice: v, cloud: false });
     } else {
       stopAll();
-      Speech.speak('Hello, I will be your narrator.', { voice: v.identifier, rate: speechRate });
+      setError(null);
+      try {
+        Speech.speak('Hello, I will be your narrator.', {
+          voice: v.identifier,
+          rate: speechRate,
+          onError: (speechError) => setError(speechError.message || `Could not use ${v.label}.`),
+        });
+      } catch (speechError) {
+        setError(speechError instanceof Error ? speechError.message : `Could not use ${v.label}.`);
+      }
     }
   };
 
@@ -571,7 +709,7 @@ function Reader({ account, signedIn, onExit, isSigningOut, accountNotice }: Read
             <Text style={styles.bookAuthor} numberOfLines={1}>{author}</Text>
           </View>
 
-          <TouchableOpacity style={styles.voiceSelectorBtn} onPress={() => {
+          <TouchableOpacity style={styles.voiceSelectorBtn} accessibilityRole="button" accessibilityLabel={`Choose narrator. Current voice: ${voiceName}`} onPress={() => {
             setVoiceTab(useCloud ? 'cloud' : 'device');
             setIsVoiceModalOpen(true);
           }} activeOpacity={0.8}>
@@ -606,7 +744,7 @@ function Reader({ account, signedIn, onExit, isSigningOut, accountNotice }: Read
 
           <View style={styles.speedRow}>
             {SPEEDS.map((r) => (
-              <TouchableOpacity key={r} style={[styles.speedChip, speechRate === r && styles.speedChipActive]} onPress={() => handleSpeedChange(r)}>
+              <TouchableOpacity key={r} accessibilityRole="button" accessibilityLabel={`Set narration speed to ${r}x`} accessibilityState={{ selected: speechRate === r }} style={[styles.speedChip, speechRate === r && styles.speedChipActive]} onPress={() => handleSpeedChange(r)}>
                 <Text style={[styles.speedChipText, speechRate === r && { color: '#fff' }]}>{r}x</Text>
               </TouchableOpacity>
             ))}
@@ -617,7 +755,7 @@ function Reader({ account, signedIn, onExit, isSigningOut, accountNotice }: Read
               <Icon mci name="rewind-15" size={38} color={C.textDim} />
             </TouchableOpacity>
 
-            <TouchableOpacity style={styles.largePlayBtn} onPress={togglePlayPause} activeOpacity={0.85}>
+            <TouchableOpacity style={styles.largePlayBtn} accessibilityRole="button" accessibilityLabel={isPlaying ? 'Pause narration' : 'Play narration'} onPress={togglePlayPause} activeOpacity={0.85}>
               {playBtnIcon ? (
                 <Icon name={playBtnIcon} size={36} color="#fff" style={{ marginLeft: isPlaying ? 0 : 4 }} />
               ) : (
@@ -636,7 +774,7 @@ function Reader({ account, signedIn, onExit, isSigningOut, accountNotice }: Read
             {renderReader()}
           </ScrollView>
           <View style={styles.miniPlayerBar}>
-            <TouchableOpacity style={styles.miniPlayBtn} onPress={togglePlayPause}>
+            <TouchableOpacity style={styles.miniPlayBtn} accessibilityRole="button" accessibilityLabel={isPlaying ? 'Pause narration' : 'Play narration'} onPress={togglePlayPause}>
               {playBtnIcon ? <Icon name={playBtnIcon} size={22} color="#fff" style={{ marginLeft: isPlaying ? 0 : 2 }} /> : <ActivityIndicator color="#fff" />}
             </TouchableOpacity>
             <View style={{ flex: 1, marginLeft: 14 }}>
@@ -747,22 +885,28 @@ function Reader({ account, signedIn, onExit, isSigningOut, accountNotice }: Read
                   ))}
                 </View>
 
-                {!keys[cloudTab] && (
+                {cloudStatusLoading && <ActivityIndicator color={C.cyan} style={{ marginVertical: 20 }} />}
+
+                {!providerAvailability[cloudTab] && !cloudStatusLoading && (
                   <View style={styles.tipCard}>
-                    <Text style={styles.tipTitle}>Cloud voice not configured</Text>
+                    <Text style={styles.tipTitle}>
+                      {signedIn ? 'Cloud voice unavailable' : 'Sign in to use cloud narration'}
+                    </Text>
                     <Text style={styles.tipText}>
-                      {Platform.OS === 'web'
-                        ? 'Cloud voice keys are not included in the web build to protect your account. Choose “On this device” or configure cloud voice access through a trusted server.'
-                        : `Add EXPO_PUBLIC_${cloudTab === 'eleven' ? 'ELEVENLABS' : 'GOOGLE_TTS'}_KEY to Api.env and restart the demo. You can also choose “On this device”.`}
+                      {!signedIn
+                        ? 'Cloud narration requires an EchoReader account. Device voices are available in guest mode.'
+                        : cloudStatusError || `${cloudTab === 'eleven' ? 'ElevenLabs' : 'Google'} narration is not configured on the secure backend. Device voices remain available.`}
                     </Text>
                   </View>
                 )}
 
-                {keys[cloudTab] && cloudTab === 'eleven' && elevenLoading && <ActivityIndicator color={C.cyan} style={{ marginVertical: 20 }} />}
+                {providerAvailability[cloudTab] && ((cloudTab === 'eleven' && elevenLoading) || (cloudTab === 'google' && googleLoading)) && (
+                  <ActivityIndicator color={C.cyan} style={{ marginVertical: 20 }} />
+                )}
 
-                {keys[cloudTab] ? (
+                {providerAvailability[cloudTab] && !(cloudTab === 'eleven' ? elevenLoading : googleLoading) ? (
                   <FlatList
-                    data={cloudTab === 'eleven' ? elevenVoices : GOOGLE_VOICES}
+                    data={cloudTab === 'eleven' ? elevenVoices : googleVoices}
                     keyExtractor={(v) => v.provider + v.id}
                     showsVerticalScrollIndicator={false}
                     renderItem={({ item }) => {
@@ -783,7 +927,11 @@ function Reader({ account, signedIn, onExit, isSigningOut, accountNotice }: Read
                         </TouchableOpacity>
                       );
                     }}
-                    ListEmptyComponent={!elevenLoading ? <Text style={styles.emptyText}>No voices found on this account.</Text> : undefined}
+                    ListEmptyComponent={
+                      <Text style={styles.emptyText}>
+                        {(cloudTab === 'eleven' ? elevenVoiceError : googleVoiceError) || 'No cloud voices found.'}
+                      </Text>
+                    }
                   />
                 ) : null}
               </>
@@ -810,7 +958,13 @@ function Reader({ account, signedIn, onExit, isSigningOut, accountNotice }: Read
                     </TouchableOpacity>
                   );
                 }}
-                ListEmptyComponent={<Text style={styles.emptyText}>No extra voices found. EchoReader will use the system default.</Text>}
+                ListEmptyComponent={
+                  <View>
+                    {deviceVoicesLoading && <ActivityIndicator color={C.cyan} style={{ marginVertical: 20 }} />}
+                    {!deviceVoicesLoading && !!deviceVoiceError && <Text style={styles.emptyText}>{deviceVoiceError}</Text>}
+                    {!deviceVoicesLoading && !deviceVoiceError && <Text style={styles.emptyText}>No extra voices found. EchoReader will use the system default.</Text>}
+                  </View>
+                }
               />
             )}
           </View>
