@@ -6,7 +6,7 @@
 ## Summary
 
 | Step | Status | Exit Code | Details |
-|---|---|---:|---|
+| --- | --- | ---: | --- |
 | TypeScript | PASS | 0 | `npx tsc --noEmit` |
 | Web build | PASS | 0 | `npm run build:web`; Expo exported the GitHub Pages site to `dist` |
 | Backend tests | PASS | 0 | `npm test`; 11 passed, 0 failed |
@@ -33,7 +33,7 @@ overall: NEEDS_SIGNOFF — live Firebase deployment, Firestore limits, real brow
 ## Issues and Gaps
 
 | # | Severity | Description |
-|---|---|---|
+| --- | --- | --- |
 | 1 | HIGH | `npm audit --omit=dev` reported 29 high and 3 moderate advisories in the existing application production dependency tree. |
 | 2 | MEDIUM | The Functions production dependency audit reported 9 moderate advisories. |
 | 3 | UNVERIFIED | Firebase ID-token verification, Firestore rate-limit transactions, and real Google/ElevenLabs responses require an approved Firebase deployment and credentials. |

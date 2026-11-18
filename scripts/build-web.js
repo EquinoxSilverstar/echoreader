@@ -16,5 +16,6 @@ if (result.error) throw result.error;
 if (result.status !== 0) process.exit(result.status || 1);
 
 mkdirSync('dist', { recursive: true });
+// cspell:ignore nojekyll
 writeFileSync(path.join('dist', '.nojekyll'), '');
 
